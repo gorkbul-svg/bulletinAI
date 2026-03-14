@@ -1,25 +1,62 @@
+// src/middleware/auth.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin, supabaseForRequest } from "@/lib/supabase";
 
-export async function requireAuth(req: NextRequest) {
-  const token =
-    req.cookies.get("sb-access-token")?.value ||
-    req.headers.get("authorization")?.replace("Bearer ", "");
+export interface AuthContext {
+  userId:   string;
+  tenantId: string;
+  role:     string;
+  supabase: ReturnType<typeof supabaseForRequest>;
+}
 
-  if (!token) {
-    return { user: null, error: "Unauthorized", response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
+type RouteHandler = (req: NextRequest, ctx: AuthContext) => Promise<NextResponse>;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+export function withAuth(handler: RouteHandler) {
+  return async (req: NextRequest): Promise<NextResponse> => {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!token) return json({ error: "Unauthorized" }, 401);
 
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) return json({ error: "Invalid token" }, 401);
 
-  if (error || !user) {
-    return { user: null, error: "Unauthorized", response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
+    let tenantId = req.headers.get("x-tenant-id") ?? "";
+    let role     = "member";
 
-  return { user, error: null, response: null };
+    if (tenantId) {
+      const { data: membership } = await supabaseAdmin
+        .from("tenant_members")
+        .select("role")
+        .eq("tenant_id", tenantId)
+        .eq("user_id", user.id)
+        .single();
+      if (!membership) return json({ error: "Forbidden" }, 403);
+      role = membership.role;
+    } else {
+      const { data: memberships } = await supabaseAdmin
+        .from("tenant_members")
+        .select("tenant_id, role")
+        .eq("user_id", user.id)
+        .limit(1);
+      if (!memberships?.length) return json({ error: "No tenant found" }, 403);
+      tenantId = memberships[0].tenant_id;
+      role     = memberships[0].role;
+    }
+
+    return handler(req, {
+      userId:   user.id,
+      tenantId,
+      role,
+      supabase: supabaseForRequest(token),
+    });
+  };
+}
+
+export function requireRole(minRole: "owner" | "admin" | "member") {
+  const hierarchy = { owner: 3, admin: 2, member: 1 };
+  return (ctx: AuthContext): boolean => hierarchy[ctx.role as keyof typeof hierarchy] >= hierarchy[minRole];
+}
+
+export function json(body: unknown, status = 200) {
+  return NextResponse.json(body, { status });
 }
