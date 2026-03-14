@@ -1,53 +1,47 @@
 "use client";
-// src/app/auth/login/page.tsx
 
-import { useState, useEffect } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { useState } from "react";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [supabase, setSupabase] = useState<any>(null);
 
-  useEffect(() => {
-    const client = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  function handleGoogle() {
+    const redirectTo = encodeURIComponent(
+      `${window.location.origin}/auth/callback?next=/demo/dashboard`
     );
-    setSupabase(client);
-  }, []);
-
-  function getNext() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("next") || "/demo/dashboard";
-  }
-
-  async function handleGoogle() {
-    if (!supabase) return;
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${getNext()}`,
-      },
-    });
-    if (error) { setError(error.message); setLoading(false); }
+    window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
   }
 
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) return;
     setLoading(true);
     setError("");
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error_description || data.error);
+        setLoading(false);
+      } else {
+        document.cookie = `sb-access-token=${data.access_token}; path=/; max-age=3600; SameSite=Lax`;
+        window.location.href = "/demo/dashboard";
+      }
+    } catch {
+      setError("Bağlantı hatası");
       setLoading(false);
-    } else if (data.session) {
-      document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=3600; SameSite=Lax`;
-      window.location.href = getNext();
     }
   }
 
@@ -70,13 +64,13 @@ export default function LoginPage() {
           <p style={{ color: "#64748B", fontSize: 14, margin: 0 }}>Hesabınıza giriş yapın</p>
         </div>
 
-        <button onClick={handleGoogle} disabled={loading || !supabase} style={{
+        <button onClick={handleGoogle} style={{
           width: "100%", padding: "12px 16px",
           background: "#FFFFFF", color: "#1E293B",
           border: "none", borderRadius: 10, cursor: "pointer",
           fontSize: 15, fontWeight: 600,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-          marginBottom: 20, opacity: (loading || !supabase) ? 0.7 : 1,
+          marginBottom: 20,
         }}>
           <svg width="18" height="18" viewBox="0 0 48 48">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -120,7 +114,6 @@ export default function LoginPage() {
             background: "#38BDF8", color: "#06090F", border: "none",
             cursor: "pointer", fontSize: 15, fontWeight: 700,
             opacity: loading ? 0.7 : 1,
-            boxShadow: "0 0 24px rgba(56,189,248,0.25)",
           }}>
             {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
           </button>
