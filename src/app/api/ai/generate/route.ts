@@ -1,59 +1,56 @@
 // src/app/api/ai/generate/route.ts
-// POST /api/ai/generate
-// US-003-01: AI ile bülten içeriği üretimi
-
-import { NextRequest } from "next/server";
-import { withAuth, json } from "@/middleware/auth";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 const GenerateSchema = z.object({
-  topic:       z.string().min(2).max(200),
-  tone:        z.enum(["professional", "friendly", "urgent", "informative", "creative"]).default("professional"),
-  length:      z.enum(["short", "medium", "long"]).default("medium"),
-  channels:    z.array(z.enum(["whatsapp", "email"])).min(1),
-  audience:    z.string().optional(),
+  topic:        z.string().min(2).max(200),
+  tone:         z.enum(["professional","friendly","urgent","informative","creative"]).default("professional"),
+  length:       z.enum(["short","medium","long"]).default("medium"),
+  channels:     z.array(z.enum(["whatsapp","email"])).min(1),
+  audience:     z.string().optional(),
   businessName: z.string().optional(),
 });
 
 const TONE_PROMPTS: Record<string, string> = {
   professional: "resmi ve profesyonel bir dil kullanarak",
   friendly:     "sıcak, samimi ve arkadaşça bir dil kullanarak",
-  urgent:       "aciliyet hissi yaratan, dikkat çekici ve harekete geçirici bir dil kullanarak",
+  urgent:       "aciliyet hissi yaratan, dikkat çekici bir dil kullanarak",
   informative:  "bilgilendirici, açık ve net bir dil kullanarak",
   creative:     "yaratıcı, özgün ve ilgi çekici bir dil kullanarak",
 };
 
 const LENGTH_GUIDE: Record<string, string> = {
-  short:  "WhatsApp için ideal, maksimum 200 karakter",
-  medium: "Her kanal için uygun, 300-500 karakter",
-  long:   "E-posta için ideal, 800-1200 karakter",
+  short:  "maksimum 200 karakter",
+  medium: "300-500 karakter",
+  long:   "800-1200 karakter",
 };
 
-export const POST = withAuth(async (req, ctx) => {
+export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = GenerateSchema.safeParse(body);
-  if (!parsed.success) return json({ error: "Validation failed", issues: parsed.error.flatten() }, 400);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Validation failed" }, { status: 400 });
+  }
 
   const { topic, tone, length, channels, audience, businessName } = parsed.data;
-
   const results: Record<string, string> = {};
 
   for (const channel of channels) {
     const isWA = channel === "whatsapp";
 
-    const systemPrompt = `Sen Türkiye'deki işletmeler için ${isWA ? "WhatsApp" : "e-posta"} bülten içeriği üreten uzman bir metin yazarısın. 
+    const systemPrompt = `Sen Türkiye'deki işletmeler için ${isWA ? "WhatsApp" : "e-posta"} bülten içeriği üreten uzman bir metin yazarısın.
 ${businessName ? `İşletme adı: ${businessName}` : ""}
 ${audience ? `Hedef kitle: ${audience}` : ""}
 
 Kurallar:
-${isWA ? `- WhatsApp mesajı için ${LENGTH_GUIDE[length]} yaz
-- WhatsApp formatını kullan: *kalın* için yıldız, emojiler uygun yerlerde
+${isWA
+  ? `- WhatsApp mesajı yaz, ${LENGTH_GUIDE[length]}
+- *kalın* için yıldız kullan, uygun yerlerde emoji ekle
 - {{1}} değişkenini alıcı adı için kullan
-- Direkt ve öz ol` : `- E-posta içeriği için ${LENGTH_GUIDE[length]} yaz  
+- Direkt ve öz ol`
+  : `- E-posta içeriği yaz, ${LENGTH_GUIDE[length]}
 - Konu satırı dahil et (Konu: ... formatında)
-- HTML yerine düz metin kullan
-- {{1}} değişkenini alıcı adı için kullan
-- Paragraflar halinde yaz`}
+- {{1}} değişkenini alıcı adı için kullan`}
 - Türkçe yaz
 - Sadece içeriği yaz, açıklama ekleme`;
 
@@ -61,7 +58,7 @@ ${isWA ? `- WhatsApp mesajı için ${LENGTH_GUIDE[length]} yaz
 Ton: ${TONE_PROMPTS[tone]}
 Kanal: ${isWA ? "WhatsApp" : "E-posta"}
 
-Bu konu için ${isWA ? "WhatsApp bülteni" : "e-posta bülteni"} yaz.`;
+Bu konu için içerik yaz.`;
 
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -81,19 +78,19 @@ Bu konu için ${isWA ? "WhatsApp bülteni" : "e-posta bülteni"} yaz.`;
 
       if (!response.ok) {
         const err = await response.json();
-        return json({ error: "AI API error", detail: err?.error?.message }, 500);
+        return NextResponse.json({ error: "AI API error", detail: err?.error?.message }, { status: 500 });
       }
 
       const data = await response.json();
       results[channel] = data.content?.[0]?.text ?? "";
     } catch (e: any) {
-      return json({ error: "AI generation failed", detail: e.message }, 500);
+      return NextResponse.json({ error: "AI generation failed", detail: e.message }, { status: 500 });
     }
   }
 
-  return json({
+  return NextResponse.json({
     success: true,
     content: results,
     metadata: { topic, tone, length, channels, generated_at: new Date().toISOString() },
   });
-});
+}
