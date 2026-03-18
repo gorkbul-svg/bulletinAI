@@ -3,5 +3,5 @@
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
-  "crons": [{ "path": "/api/cron/process-queue", "schedule": "* * * * *" }]
+  "crons": [{ "path": "/api/cron/process-queue", "schedule": "0 9 * * *" }]
 }
