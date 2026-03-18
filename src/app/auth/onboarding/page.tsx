@@ -2,7 +2,7 @@
 // src/app/auth/onboarding/page.tsx — US-001-02: Organizasyon Onboarding Süreci
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+
 
 const STEPS = [
   { id: "org",      label: "Organizasyon", icon: "🏢" },
