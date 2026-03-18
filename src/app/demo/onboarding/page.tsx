@@ -1,3 +1,7 @@
 "use client";
-import OnboardingWizard from "@/components/onboarding-wizard";
-export default function Page() { return <OnboardingWizard />; }
+export default function Page() {
+  if (typeof window !== "undefined") {
+    window.location.href = "/demo/dashboard";
+  }
+  return null;
+}
