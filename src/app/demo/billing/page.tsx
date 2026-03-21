@@ -31,10 +31,10 @@ export default function BillingPage() {
     ? document.cookie.split(";").find(c => c.trim().startsWith("sb-access-token="))?.split("=")[1]
     : null;
 
-  const tenantId = typeof window !== "undefined"
-    ? localStorage.getItem("tenant_id") || ""
-    : "";
-
+const tenantId = typeof window !== "undefined"
+  ? document.cookie.split(";").find(c => c.trim().startsWith("tenant_id="))?.split("=")[1] || ""
+  : "";
+  
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
