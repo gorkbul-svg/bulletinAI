@@ -42,30 +42,36 @@ const tenantId = typeof window !== "undefined"
     }
   }, []);
 
-  async function handleCheckout(plan: string) {
-    setLoading(plan);
-    try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Tenant-Id": tenantId,
-        },
-        body: JSON.stringify({ plan }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Checkout oluşturulamadı: " + (data.error || "Bilinmeyen hata"));
-      }
-    } catch (e: any) {
-      alert("Hata: " + e.message);
-    }
-    setLoading(null);
-  }
+ async function handleCheckout(plan: string) {
+  setLoading(plan);
+  try {
+    // Önce tenant ID'yi al
+    const meRes = await fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const meData = await meRes.json();
+    const resolvedTenantId = meData.tenantId;
 
+    const res = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        "X-Tenant-Id": resolvedTenantId,
+      },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert("Checkout oluşturulamadı: " + (data.error || "Bilinmeyen hata"));
+    }
+  } catch (e: any) {
+    alert("Hata: " + e.message);
+  }
+  setLoading(null);
+}
   return (
     <div style={{ padding: "28px 24px", fontFamily: "Calibri, sans-serif", color: "#E2E8F0", minHeight: "100vh", background: "#080810" }}>
 
