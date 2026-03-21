@@ -16,8 +16,19 @@ export default function LoginPage() {
       const token = params.get("access_token");
       if (token) {
         document.cookie = `sb-access-token=${token}; path=/; max-age=3600; SameSite=Lax`;
-        const next = new URLSearchParams(window.location.search).get("next") || "/demo/dashboard";
-        window.location.href = next;
+        // Google login sonrası tenant ID'yi API'den al
+        fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ token }),
+        }).then(r => r.json()).then(d => {
+          if (d.tenants?.[0]?.id) {
+            document.cookie = `tenant_id=${d.tenants[0].id}; path=/; max-age=3600; SameSite=Lax`;
+          }
+        }).catch(() => {}).finally(() => {
+          const next = new URLSearchParams(window.location.search).get("next") || "/demo/dashboard";
+          window.location.href = next;
+        });
       }
     }
   }, []);
@@ -37,6 +48,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
+      // Supabase'den token al
       const res = await fetch("https://hxgaksqbalqqhiqophcu.supabase.co/auth/v1/token?grant_type=password", {
         method: "POST",
         headers: {
@@ -50,7 +62,20 @@ export default function LoginPage() {
         setError(data.error_description || data.msg || "Giriş başarısız");
         setLoading(false);
       } else {
+        // Token'ı cookie'ye yaz
         document.cookie = `sb-access-token=${data.access_token}; path=/; max-age=3600; SameSite=Lax`;
+        // Tenant ID'yi API'den al ve cookie'ye kaydet
+        try {
+          const loginRes = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const loginData = await loginRes.json();
+          if (loginData.tenants?.[0]?.id) {
+            document.cookie = `tenant_id=${loginData.tenants[0].id}; path=/; max-age=3600; SameSite=Lax`;
+          }
+        } catch {}
         window.location.href = getNext();
       }
     } catch {
